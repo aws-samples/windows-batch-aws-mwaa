@@ -1,0 +1,502 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+Description: This template manages an ECS cluster and related components 
+
+Parameters:
+  EcsBucketName:
+    Description: Name of Bucket ECS Tasks use stor inputs and outputs
+    Type: String
+  EcsClusterDefaultSize:
+    Description: Initial size of the cluster Auto Scaling Group 
+    Type: Number 
+    Default: 1
+  EcsClusterMinSize:
+    Description: Minimum Size of the cluster Auto Scaling Group 
+    Type: Number
+    Default: 0
+  EcsClusterMaxSize:
+    Description: Maximum size of the cluster Auto Scaling Group
+    Type: Number 
+    Default: 8
+  EcsClusterInstanceType:
+    Description: Instance type for ECS Cluster
+    Type: String
+    Default: c5.xlarge
+  EcsContainerName:
+    Description: Name to assign to the Container to run the ECS Task
+    Type: String
+    Default: WindowsBatchContainer
+  EcsContainerImageUrl:
+    Description: URL of the Container Image. Leave empty if you want to build and use your own container
+    Type: String
+    Default: ''
+  EcsResourceTag:
+    Description: ECS Resources are ginve this tag (key) with value set to true
+    Type: String
+    Default: windows-batch-blog
+  WindowsAMI:
+    Description: AMI ID of the Windows Image to use for the cluster instances
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-windows-latest/Windows_Server-2022-English-Full-ECS_Optimized/image_id
+  RdpIp:
+    Description: Optional. IP Address to configure for Rdp access to ECS Cluster Hosts
+    Type: String
+    Default: ''
+  KeyName:
+    Description: Optional. SSH Keypair to access cluster instances
+    Type: String
+    Default: ''
+
+Conditions:
+  RdpIpProvided:
+    !Not [!Equals [!Ref RdpIp, '']]
+  SshKeyProvided:
+    !Not [!Equals [!Ref KeyName, '']]
+  NoEcsContainerImageUrlProvided:
+    !Equals [!Ref EcsContainerImageUrl, '']
+  EcsContainerImageUrlProvided:
+    !Not [ Condition: NoEcsContainerImageUrlProvided ]
+
+Resources:
+  EcsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Memory: '1024'
+      Cpu: '1024'
+      ContainerDefinitions:
+        - Name: !Ref EcsContainerName
+          Memory: 1024
+          Cpu: 1024
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: ecs/mwaa-tasks
+              awslogs-create-group: 'true'
+          Image: 
+            !If 
+              - EcsContainerImageUrlProvided
+              - !Ref EcsContainerImageUrl
+              - !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/windows-octave:latest
+          Essential: true
+      TaskRoleArn: !GetAtt EcsTaskRole.Arn
+      Tags:
+        - Key: !Ref EcsResourceTag
+          Value: 'true'
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Ref AWS::StackName
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+      VpcId: !Ref VPC
+
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+      VpcId: !Ref VPC
+
+  SubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+      VpcId: !Ref VPC
+
+  SubnetAPrivate:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+      VpcId: !Ref VPC
+
+  SubnetBPrivate:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.4.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+      VpcId: !Ref VPC
+
+  SubnetCPrivate:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: 10.0.5.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+      VpcId: !Ref VPC
+
+  EIPA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc         
+      Tags: 
+        - Key: Name
+          Value: Ref !AWS::StackName
+
+  EIPB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc         
+      Tags: 
+        - Key: Name
+          Value: Ref !AWS::StackName
+
+  EIPC:
+    Type: AWS::EC2::EIP  
+    Properties:
+      Domain: vpc         
+      Tags: 
+        - Key: Name
+          Value: Ref !AWS::StackName
+
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt EIPA.AllocationId
+      SubnetId: !Ref SubnetA
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt EIPB.AllocationId
+      SubnetId: !Ref SubnetB
+      Tags:
+      - Key: Name
+        Value: !Ref AWS::StackName
+
+  NatGatewayC:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIPC.AllocationId
+      SubnetId: !Ref SubnetA
+      Tags:
+      - Key: Name
+        Value: !Ref AWS::StackName                               
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+      - Key: Name
+        Value: !Ref AWS::StackName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  RouteTablePrivateA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  RouteTablePrivateB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  RouteTablePrivateC:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC                   
+
+  DefaultRoutePrivateA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  DefaultRoutePrivateB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayB
+
+  DefaultRoutePrivateC:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateC
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayC   
+
+  SubnetAPrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateA
+      SubnetId: !Ref SubnetAPrivate
+
+  SubnetBPrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateB
+      SubnetId: !Ref SubnetBPrivate
+
+  SubnetCPrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateC
+      SubnetId: !Ref SubnetCPrivate
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetA
+
+  SubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetB
+
+  SubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetC
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: MWAA-Batch-Compute-ECS-Cluster
+      ClusterSettings: 
+        - Name: containerInsights
+          Value: enabled      
+      Tags:
+        - Key: !Ref EcsResourceTag
+          Value: 'true'
+
+  ClusterCapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    DependsOn: ECSCluster
+    Properties:
+      # We add a name, because an autogenerated name based on the stack name can lead to failure if the stackname starts with 'ecs', 'aws' or 'fargate'
+      Name: cluster-capacity-provider
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref EcsAutoScalingGroup
+        ManagedScaling:
+          Status: DISABLED
+        ManagedTerminationProtection: DISABLED 
+
+  ClusterCapacityProviderAssociation:
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+    Properties:
+      Cluster: !Ref ECSCluster
+      CapacityProviders:
+        - !Ref ClusterCapacityProvider
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: !Ref ClusterCapacityProvider
+          Weight: 1            
+         
+  WindowsBatchClusterInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for EC2 instances in ECS Cluster
+      SecurityGroupIngress:
+        - !If 
+          - RdpIpProvided
+          - IpProtocol: tcp
+            FromPort: 3389
+            ToPort: 3389
+            CidrIp: !Sub ${RdpIp}/32
+          - IpProtocol: tcp
+            FromPort: 3389
+            ToPort: 3389
+            CidrIp: 127.0.0.1/32
+      VpcId: !Ref VPC
+
+  WindowsBatchClusterServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Batch Tasks
+      VpcId: !Ref VPC
+
+  WindowsBatchClusterInstanceLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateName: WindowsBatchClusterInstanceLaunchTemplate
+      LaunchTemplateData: 
+        KeyName: !If [SshKeyProvided, !Ref KeyName, !Ref AWS::NoValue ]
+        BlockDeviceMappings: 
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 100
+              VolumeType: gp3
+        EbsOptimized: True
+        IamInstanceProfile: 
+          Name: !Ref EcsInstanceProfile
+        ImageId: !Ref WindowsAMI
+        Monitoring:
+          Enabled: True
+        SecurityGroupIds:
+          - !Ref WindowsBatchClusterInstanceSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            <powershell>
+              [System.Environment]::SetEnvironmentVariable("ECS_ENABLE_TASK_ENI", "true", [System.EnvironmentVariableTarget]::Machine)
+              [System.Environment]::SetEnvironmentVariable("ECS_IMAGE_PULL_BEHAVIOR", "prefer-cached", [System.EnvironmentVariableTarget]::Machine)
+              [System.Environment]::SetEnvironmentVariable("ECS_ENABLE_AWSLOGS_EXECUTIONROLE_OVERRIDE", "true", [System.EnvironmentVariableTarget]::Machine)
+              [System.Environment]::SetEnvironmentVariable("ECS_ENABLE_TASK_IAM_ROLE", "true", [System.EnvironmentVariableTarget]::Machine)
+              [System.Environment]::SetEnvironmentVariable("ECS_IMAGE_MINIMUM_CLEANUP_AGE", "144h", [System.EnvironmentVariableTarget]::Machine)
+              [System.Environment]::SetEnvironmentVariable("NON_ECS_IMAGE_MINIMUM_CLEANUP_AGE", "144h", [System.EnvironmentVariableTarget]::Machine)
+              Initialize-ECSAgent -Cluster ${ECSCluster} -EnableTaskIAMRole -LoggingDrivers '["json-file","awslogs"]'
+            </powershell>
+
+  EcsAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties: 
+      VPCZoneIdentifier:
+        - !Ref SubnetA
+        - !Ref SubnetB
+        - !Ref SubnetC
+      MixedInstancesPolicy:
+        InstancesDistribution:
+          OnDemandAllocationStrategy: prioritized
+          OnDemandBaseCapacity: 0
+          OnDemandPercentageAboveBaseCapacity: 100
+        LaunchTemplate:
+          LaunchTemplateSpecification:
+            LaunchTemplateId: !Ref WindowsBatchClusterInstanceLaunchTemplate
+            Version: !GetAtt WindowsBatchClusterInstanceLaunchTemplate.LatestVersionNumber
+          Overrides:
+            - InstanceType: !Ref EcsClusterInstanceType
+      MinSize: !Ref EcsClusterMinSize
+      MaxSize: !Ref EcsClusterMaxSize
+      DesiredCapacity: !Ref EcsClusterDefaultSize
+      Tags: 
+        - Key: Name
+          Value: !Sub ${ECSCluster}
+          PropagateAtLaunch: true
+        - Key: !Ref EcsResourceTag
+          Value: 'true'
+          PropagateAtLaunch: true
+    
+  EcsInstanceRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      Path: /
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole      
+            Principal:
+              Service: ec2.amazonaws.com 
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+        - PolicyName: EcsInstanceRoleInlinePolicy
+          PolicyDocument:
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - logs:DescribeLogStreams
+                  Resource: arn:aws:logs:*:*:*
+    
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      Path: /
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: EcsTaskRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource: 
+                  - !Sub arn:${AWS::Partition}:s3:::${EcsBucketName}
+                  - !Sub arn:${AWS::Partition}:s3:::${EcsBucketName}/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: arn:aws:logs:*:*:*
+
+  EcsInstanceProfile: 
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: 
+        - !Ref EcsInstanceRole
+
+Outputs:
+  Cluster:
+    Description: A reference to the ECS cluster
+    Value: !Ref ECSCluster
+
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+
+  ContainerImageUrl:
+    Description: Push your container to this repository
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/windows-octave:latest
+    Condition: NoEcsContainerImageUrlProvided

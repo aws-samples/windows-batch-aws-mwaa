@@ -1,0 +1,5 @@
+env
+docker/test/*.mat
+docker/test/*.png
+.config
+*.tar
