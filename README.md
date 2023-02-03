@@ -13,5 +13,7 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 ## License
 
-This library is licensed under the MIT-0 License. See the LICENSE file.
+This repository is licensed under the MIT-0 License. See the LICENSE file.
 
+Although this repository is released under the MIT-0 license, its Dockerfile uses Windows as a base image. 
+Microsoft's licensing includes the EULA (https://learn.microsoft.com/en-us/virtualization/windowscontainers/images-eula).
