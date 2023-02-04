@@ -1,11 +1,6 @@
-## My Project
+## Stay Tuned
 
-TODO: Fill this README out!
-
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
+Soon you'll find the content that describes the architecture and motivation behind the assets in this repo.
 
 ## Security
 
