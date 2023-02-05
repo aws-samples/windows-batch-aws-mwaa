@@ -27,7 +27,7 @@ if [[ ! -f "$SCRIPT_DIR/.config" ]]; then
 	echo "Creating MWAA Bucket for DAGs ($MWAA_BUCKET_NAME)"
 	aws s3api create-bucket --bucket $MWAA_BUCKET_NAME --create-bucket-configuration "LocationConstraint=$REGION"
 	aws s3api put-public-access-block \
-		--bucket $ECS_BUCKET_NAME \
+		--bucket $MWAA_BUCKET_NAME \
 		--public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 fi
 
