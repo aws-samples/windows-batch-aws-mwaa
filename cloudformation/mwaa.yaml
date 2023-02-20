@@ -266,7 +266,8 @@ Resources:
               - Effect: Allow
                 Action: 
                   - s3:GetAccountPublicAccessBlock
-                  - s3:ListAllMyBuckets
+                  - "s3:List*"
+                  - s3:GetEncryptionConfiguration
                 Resource: '*'
               - Effect: Allow
                 Action: cloudwatch:PutMetricData
