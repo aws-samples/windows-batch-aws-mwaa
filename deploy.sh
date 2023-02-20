@@ -29,6 +29,8 @@ if [[ ! -f "$SCRIPT_DIR/.config" ]]; then
 	aws s3api put-public-access-block \
 		--bucket $MWAA_BUCKET_NAME \
 		--public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+	aws s3api put-bucket-versioning --bucket $MWAA_BUCKET_NAME --versioning-configuration Status=Enabled
+
 fi
 
 source $SCRIPT_DIR/.config
