@@ -30,7 +30,7 @@ Parameters:
   EcsContainerImageUrl:
     Description: URL of the Container Image. Leave empty if you want to build and use your own container
     Type: String
-    Default: ''
+    Default: 'public.ecr.aws/o1d7m8a4/windows-batch-aws-mwaa'
   EcsResourceTag:
     Description: ECS Resources are ginve this tag (key) with value set to true
     Type: String
