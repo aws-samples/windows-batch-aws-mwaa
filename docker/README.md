@@ -32,7 +32,7 @@ $tag = "latest"
 $appName = "octave"
 
 # Download GnuOctave and extract it to
-$octaveVersion = "7.3.0"
+$octaveVersion = "8.2.0"
 wget "https://ftpmirror.gnu.org/octave/windows/octave-$octaveVersion-w64.zip" -UseBasicParsing -OutFile "./octave.zip"
 Expand-Archive -Path "./octave.zip" -DestinationPath "./"
 
