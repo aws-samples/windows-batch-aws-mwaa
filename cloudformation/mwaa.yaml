@@ -295,6 +295,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ecs:RunTask
+                  - ecs:StopTask 
                   - ecs:DescribeTasks
                   - ecs:ListClusters
                   - ecs:DescribeClusters 
