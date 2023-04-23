@@ -13,7 +13,7 @@ num_frames = 100
 frame_size = 1000
 EbN0dB = [-2.0, 4.0, 10.0]
 
-octave_bin = "/Applications/Octave-6.2.0.app/Contents/Resources/usr/bin/octave-octave-app@6.0.90"
+octave_bin = "/usr/local/bin/octave"
 
 # Change to directory of this script
 abs_path = os.path.abspath(__file__)
